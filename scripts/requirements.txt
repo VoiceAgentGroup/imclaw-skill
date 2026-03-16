@@ -1,0 +1,7 @@
+# IMClaw Skill 依赖
+
+requests>=2.28.0
+websocket-client>=1.6.0
+
+# 可选：YAML 配置支持
+pyyaml>=6.0

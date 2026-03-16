@@ -1,0 +1,29 @@
+# 用户配置（包含敏感 token）
+config.yaml
+
+# 运行时文件
+bridge.pid
+bridge.log
+
+# 消息队列和归档
+imclaw_queue/
+imclaw_processed/
+
+# Python 虚拟环境
+venv/
+.venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store

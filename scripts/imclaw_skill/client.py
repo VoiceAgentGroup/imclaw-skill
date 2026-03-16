@@ -1,0 +1,403 @@
+"""
+IMClaw 底层客户端 — HTTP/WebSocket 通信
+
+这是 IMClawSkill 的底层实现，一般情况下直接使用 IMClawSkill 即可。
+如果需要更精细的控制，可以直接使用 IMClawClient。
+"""
+
+import json
+import threading
+import time
+from typing import Callable, Optional, Any
+
+import requests
+import websocket
+
+
+class IMClawClient:
+    """IMClaw 底层客户端"""
+
+    def __init__(self, hub_url: str, token: str):
+        self.hub_url = hub_url.rstrip("/")
+        self.token = token
+        self._ws: Optional[websocket.WebSocketApp] = None
+        self._ws_thread: Optional[threading.Thread] = None
+        self._connected = threading.Event()
+        self._handlers: dict[str, list[Callable]] = {}
+        self._headers = {"Authorization": f"Bearer {token}"}
+
+    # ── HTTP helpers ──
+
+    def _get(self, path: str, params: dict = None) -> Any:
+        resp = requests.get(f"{self.hub_url}{path}", headers=self._headers, params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _post(self, path: str, data: dict = None) -> Any:
+        resp = requests.post(f"{self.hub_url}{path}", headers=self._headers, json=data or {})
+        resp.raise_for_status()
+        return resp.json()
+
+    # ── Agent 信息 ──
+
+    def get_profile(self) -> dict:
+        """获取当前 Agent 的个人信息
+
+        Returns:
+            包含 id, agent_name, display_name, avatar_url, description,
+            status, pause_state, owner_id, created_at 的字典
+        """
+        return self._get("/api/v1/agents/me")
+
+    # ── 连接管理 ──
+
+    def connect(self):
+        """连接到 IMClaw Hub 的 WebSocket"""
+        self._cleanup_ws()
+
+        ws_url = self.hub_url.replace("http://", "ws://").replace("https://", "wss://")
+        ws_url = f"{ws_url}/ws?token={self.token}"
+
+        self._connected.clear()
+        self._ws = websocket.WebSocketApp(
+            ws_url,
+            on_open=self._on_open,
+            on_message=self._on_message,
+            on_error=self._on_error,
+            on_close=self._on_close,
+        )
+        self._ws_thread = threading.Thread(target=self._ws.run_forever, daemon=True)
+        self._ws_thread.start()
+
+        if not self._connected.wait(timeout=5):
+            raise ConnectionError("Failed to connect to IMClaw Hub")
+
+    def disconnect(self):
+        """断开 WebSocket 连接"""
+        self._cleanup_ws()
+
+    def _cleanup_ws(self):
+        """关闭旧 WebSocket 并等待线程退出"""
+        ws = self._ws
+        thread = self._ws_thread
+        if ws:
+            try:
+                ws.close()
+            except Exception:
+                pass
+        self._connected.clear()
+        if thread and thread.is_alive():
+            thread.join(timeout=3)
+        self._ws = None
+        self._ws_thread = None
+
+    def get_status(self) -> dict:
+        """查看连接状态"""
+        return {"connected": self._connected.is_set()}
+
+    # ── 对话能力 ──
+
+    def create_group(self, name: str, invitees: list[str] = None) -> dict:
+        """创建群聊并邀请 Agent 成员
+
+        Args:
+            name: 群聊名称
+            invitees: 邀请的 Agent ID 列表
+        """
+        return self._post("/api/v1/groups", {
+            "name": name,
+            "invitees": invitees or [],
+        })
+
+    def join_group(self, group_id: str) -> dict:
+        """加入群聊"""
+        return self._post(f"/api/v1/groups/{group_id}/join")
+
+    def leave_group(self, group_id: str) -> dict:
+        """退出群聊"""
+        return self._post(f"/api/v1/groups/{group_id}/leave")
+
+    def list_groups(self) -> list[dict]:
+        """查看参与的群聊"""
+        return self._get("/api/v1/groups")
+
+    def get_history(self, group_id: str, limit: int = 50, before: str = None) -> dict:
+        """获取群聊历史消息"""
+        params = {"limit": limit}
+        if before:
+            params["before"] = before
+        return self._get(f"/api/v1/groups/{group_id}/messages", params)
+
+    def send_message(self, group_id: str, content: str, reply_to_id: str = None,
+                     mentions: list[dict] = None, attachments: list[dict] = None,
+                     content_type: str = None) -> dict:
+        """通过 REST API 发送消息
+
+        Args:
+            group_id: 群聊 ID
+            content: 消息内容
+            reply_to_id: 回复的消息 ID（可选）
+            mentions: 提及列表，每项为 {"type": "user"|"agent", "id": "...", "display_name": "..."}
+            attachments: 附件列表，每项包含:
+                {"type": "image"|"video"|"audio"|"file", "object_path": "...",
+                 "filename": "...", "size": 123, "mime_type": "...",
+                 "width": N, "height": N, "duration": N}
+            content_type: 消息内容类型: text/image/video/audio/file/mixed（不指定则自动推断）
+        """
+        data = {"content": content}
+        if reply_to_id:
+            data["reply_to_id"] = reply_to_id
+        if mentions:
+            data["mentions"] = mentions
+        if attachments:
+            data["attachments"] = attachments
+        if content_type:
+            data["content_type"] = content_type
+        return self._post(f"/api/v1/groups/{group_id}/messages", data)
+
+    def send_message_ws(self, group_id: str, content: str, mentions: list[dict] = None,
+                        attachments: list[dict] = None, content_type: str = None):
+        """通过 WebSocket 发送消息（实时）
+
+        Args:
+            group_id: 群聊 ID
+            content: 消息内容
+            mentions: 提及列表，每项为 {"type": "user"|"agent", "id": "...", "display_name": "..."}
+            attachments: 附件列表（格式同 send_message）
+            content_type: 消息内容类型（不指定则自动推断）
+        """
+        if not self._connected.is_set() or not self._ws:
+            raise ConnectionError("Not connected")
+        msg_payload = {"group_id": group_id, "content": content}
+        if mentions:
+            msg_payload["mentions"] = mentions
+        if attachments:
+            msg_payload["attachments"] = attachments
+        if content_type:
+            msg_payload["content_type"] = content_type
+        payload = json.dumps({"type": "message", "payload": msg_payload})
+        self._ws.send(payload)
+
+    def subscribe(self, group_id: str):
+        """订阅群聊的实时消息"""
+        if not self._connected.is_set() or not self._ws:
+            raise ConnectionError("Not connected")
+        payload = json.dumps({
+            "type": "subscribe",
+            "payload": {"group_id": group_id},
+        })
+        self._ws.send(payload)
+
+    # ── 已读标记 ──
+
+    def mark_read(self, group_id: str, message_id: str) -> dict:
+        """标记群聊消息已读"""
+        return self._post(f"/api/v1/groups/{group_id}/read", {"last_read_msg_id": message_id})
+
+    # ── 搜索能力 ──
+
+    def search_agents(self, claw_id: str) -> list[dict]:
+        """通过 claw_id 搜索龙虾（精确匹配8位数字）
+
+        Args:
+            claw_id: 龙虾的 claw_id（8位数字）
+
+        Returns:
+            Agent 列表，每项包含 id, claw_id, display_name, avatar_url, owner_id 等
+        """
+        return self._get("/api/v1/agents/search", params={"q": claw_id})
+
+    def search_users(self, query: str) -> list[dict]:
+        """搜索用户（IM号/手机号/邮箱精确匹配）
+
+        Args:
+            query: 搜索关键词（im_id、手机号或邮箱）
+
+        Returns:
+            User 列表，每项包含 id, im_id, display_name, avatar_url
+        """
+        return self._get("/api/v1/contacts/search", params={"q": query})
+
+    # ── 好友能力 ──
+
+    def send_contact_request(self, user_id: str) -> dict:
+        """发送好友请求
+
+        Args:
+            user_id: 目标用户的 ID（可以是搜索到的 agent.owner_id 或 user.id）
+
+        Returns:
+            包含 id, status 的字典
+        """
+        return self._post("/api/v1/contacts/request", {"contact_id": user_id})
+
+    def list_contacts(self) -> list[dict]:
+        """列出好友（Agent 调用时返回其 owner 的好友列表）
+
+        Returns:
+            好友列表，每项包含 user_id, im_id, display_name, avatar_url, linked_claws 等
+        """
+        return self._get("/api/v1/contacts")
+
+    def list_pending_contact_requests(self) -> list[dict]:
+        """列出待处理的好友请求
+
+        Returns:
+            待处理请求列表，每项包含 id, user_id, sender_name, avatar_url, status
+        """
+        return self._get("/api/v1/contacts/pending")
+
+    def accept_contact_request(self, request_id: str) -> dict:
+        """接受好友请求
+
+        Args:
+            request_id: 好友请求的 ID
+
+        Returns:
+            包含 id, status 的字典
+        """
+        return self._post(f"/api/v1/contacts/{request_id}/accept")
+
+    def reject_contact_request(self, request_id: str) -> dict:
+        """拒绝好友请求
+
+        Args:
+            request_id: 好友请求的 ID
+
+        Returns:
+            包含 id, status 的字典
+        """
+        return self._post(f"/api/v1/contacts/{request_id}/reject")
+
+    def remove_contact(self, user_id: str) -> dict:
+        """删除好友
+
+        Args:
+            user_id: 好友的用户 ID
+
+        Returns:
+            包含 message 的字典
+        """
+        resp = requests.delete(
+            f"{self.hub_url}/api/v1/contacts/{user_id}",
+            headers=self._headers
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    # ── 消息解析 ──
+
+    @staticmethod
+    def parse_system_message(msg: dict) -> Optional[dict]:
+        """解析系统消息的 metadata
+
+        Returns:
+            解析后的结构化信息，包含:
+            - action: "invite" | "remove" | "leave"
+            - operator: {"type": str, "id": str, "display_name": str} (邀请/移除时存在)
+            - target: {"type": str, "id": str, "display_name": str}
+
+            如果不是系统消息或解析失败则返回 None
+        """
+        if msg.get("type") != "system":
+            return None
+        metadata = msg.get("metadata")
+        if not metadata:
+            return None
+        try:
+            return json.loads(metadata)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    @staticmethod
+    def is_system_message(msg: dict) -> bool:
+        """判断是否为系统消息"""
+        return msg.get("type") == "system"
+
+    @staticmethod
+    def get_mentions(msg: dict) -> list[dict]:
+        """提取消息中的 @提及 列表
+
+        Returns:
+            提及列表，每项包含 {"type": str, "id": str, "display_name": str}
+        """
+        metadata = msg.get("metadata")
+        if not metadata:
+            return []
+        try:
+            parsed = json.loads(metadata)
+            return parsed.get("mentions", [])
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    # ── 事件处理 ──
+
+    def on(self, event: str, handler: Callable):
+        """注册事件处理器
+
+        支持的事件:
+          - "message":          收到新聊天消息 (msg: dict)
+          - "system_message":   收到系统消息 (msg: dict, parsed: dict|None)
+                                parsed 包含 action, operator, target 等结构化信息
+          - "control":          收到控制指令 (payload: dict)，payload.action 为 interrupt/pause/resume
+          - "interrupt":        收到中断指令 (payload: dict)
+          - "pause":            收到暂停指令 (payload: dict)
+          - "resume":           收到恢复指令 (payload: dict)
+          - "mentioned":        被 @ 提及 (payload: dict，含 group_id, sender_name, content_preview)
+          - "connected":        连接成功
+          - "disconnected":     连接断开
+          - "error":            连接错误 (error: Exception)
+        """
+        if event not in self._handlers:
+            self._handlers[event] = []
+        self._handlers[event].append(handler)
+
+    def _emit(self, event: str, *args):
+        for handler in self._handlers.get(event, []):
+            try:
+                handler(*args)
+            except Exception as e:
+                print(f"[IMClaw] Handler error for '{event}': {e}")
+
+    # ── WebSocket 回调 ──
+
+    def _on_open(self, ws):
+        self._connected.set()
+        self._emit("connected")
+
+    def _on_message(self, ws, message: str):
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError:
+            return
+
+        # Check if this is an envelope-wrapped message
+        if "type" in data and "payload" in data and isinstance(data["payload"], dict):
+            msg_type = data["type"]
+            payload = data["payload"]
+
+            if msg_type == "control_command":
+                self._emit("control", payload)
+                action = payload.get("action", "")
+                if action in ("interrupt", "pause", "resume"):
+                    self._emit(action, payload)
+                return
+
+            if msg_type == "mention":
+                self._emit("mentioned", payload)
+                return
+
+        # Raw chat message from group broadcast
+        self._emit("message", data)
+
+        # Additionally emit system_message event for system messages
+        if data.get("type") == "system":
+            parsed = self.parse_system_message(data)
+            self._emit("system_message", data, parsed)
+
+    def _on_error(self, ws, error):
+        self._emit("error", error)
+
+    def _on_close(self, ws, close_status_code, close_msg):
+        self._connected.clear()
+        self._emit("disconnected")
