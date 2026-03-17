@@ -343,24 +343,35 @@ def fetch_my_profile():
 
 
 def get_group_members(group_id: str) -> list[dict]:
-    """获取群聊成员列表"""
+    """获取群聊成员列表，403 时主动取消订阅"""
     try:
         members = skill.client._get(f"/api/v1/groups/{group_id}/members")
         return members if isinstance(members, list) else []
     except Exception as e:
-        logger.warning(f"⚠️ 获取群成员失败: {e}")
+        _handle_api_error(e, group_id, "获取群成员")
         return []
 
 
 def get_recent_history(group_id: str, limit: int = 10) -> list[dict]:
-    """获取最近的历史消息"""
+    """获取最近的历史消息，403 时主动取消订阅"""
     try:
         result = skill.client.get_history(group_id, limit=limit)
         messages = result.get("messages", []) if isinstance(result, dict) else result
         return messages if isinstance(messages, list) else []
     except Exception as e:
-        logger.warning(f"⚠️ 获取历史消息失败: {e}")
+        _handle_api_error(e, group_id, "获取历史消息")
         return []
+
+
+def _handle_api_error(e: Exception, group_id: str, action: str):
+    """统一处理 API 错误，403 时主动取消订阅（已被移除的兜底防护）"""
+    import requests as _requests
+    if isinstance(e, _requests.exceptions.HTTPError) and e.response is not None:
+        if e.response.status_code == 403:
+            logger.warning(f"⚠️ {action}失败: 403 无权访问群 {group_id[:8]}（可能已被移除），取消订阅")
+            skill.unsubscribe(group_id)
+            return
+    logger.warning(f"⚠️ {action}失败: {e}")
 
 
 def format_members_for_prompt(members: list[dict]) -> str:
@@ -696,26 +707,34 @@ def on_disconnect():
 
 @skill.on_system_message
 def on_system_message(msg, parsed):
-    """处理系统消息 - 特别是成员变动"""
-    if not parsed:
+    """处理系统消息 - 成员变动检测（含 target 单数和 targets 复数）"""
+    if not parsed or not MY_AGENT_ID:
         return
     
     action = parsed.get('action')
-    target = parsed.get('target', {})
     group_id = msg.get('group_id', '')
     
-    # 如果是移除操作，且目标是自己
-    if action == 'remove' and target.get('id') == MY_AGENT_ID:
-        group_name = msg.get('group_name', group_id[:8])
-        logger.info(f"🚫 被移除出群聊: {group_name}")
-        skill.unsubscribe(group_id)
-        logger.info(f"   已取消订阅")
+    if action not in ('remove', 'leave'):
+        return
+
+    # 检查 target（单数）和 targets（复数，级联移除时使用）
+    target = parsed.get('target', {})
+    targets = parsed.get('targets', [])
+    is_self = (
+        target.get('id') == MY_AGENT_ID or
+        any(t.get('id') == MY_AGENT_ID for t in targets)
+    )
     
-    # 如果是离开操作（自己主动离开）
-    elif action == 'leave' and target.get('id') == MY_AGENT_ID:
-        group_name = msg.get('group_name', group_id[:8])
+    if not is_self:
+        return
+
+    group_name = msg.get('group_name', group_id[:8])
+    if action == 'remove':
+        logger.info(f"🚫 被移除出群聊: {group_name}")
+    else:
         logger.info(f"👋 已离开群聊: {group_name}")
-        skill.unsubscribe(group_id)
+    skill.unsubscribe(group_id)
+    logger.info(f"   已取消订阅")
 
 @skill.on_error
 def on_error(e):
@@ -728,6 +747,24 @@ def is_from_owner(msg: dict) -> bool:
     sender_id = msg.get('sender_id', '')
     sender_type = msg.get('sender_type', '')
     return sender_type == 'user' and sender_id == MY_OWNER_ID
+
+
+def _is_self_removal(msg: dict) -> bool:
+    """检查系统消息是否表示当前 Agent 被移除或离开（含 target 单数和 targets 复数）"""
+    if not MY_AGENT_ID or msg.get('type') != 'system':
+        return False
+    from imclaw_skill.client import IMClawClient
+    parsed = IMClawClient.parse_system_message(msg)
+    if not parsed:
+        return False
+    action = parsed.get('action')
+    if action not in ('remove', 'leave'):
+        return False
+    target = parsed.get('target', {})
+    if target.get('id') == MY_AGENT_ID:
+        return True
+    targets = parsed.get('targets', [])
+    return any(t.get('id') == MY_AGENT_ID for t in targets)
 
 
 @skill.on_message
@@ -744,11 +781,27 @@ def handle(msg):
         if cached_name:
             msg['group_name'] = cached_name
     
+    group_name = msg.get('group_name', group_id[:8] if group_id else '未知')
+
+    # P0: 提前检测自身被移除/离开 — 只归档，不调 API、不入队列、不唤醒 Session
+    if _is_self_removal(msg):
+        logger.info(f"\n🚫 收到移除通知: {group_name}")
+        skill.unsubscribe(group_id)
+        archive_message(msg)
+        logger.info(f"   已取消订阅并归档，跳过后续处理")
+        return
+
+    # P1: 其他系统消息（成员变动、改名等）只归档，不唤醒 AI Session
+    if msg.get('type') == 'system':
+        logger.info(f"\n📢 系统消息: {content}")
+        logger.info(f"   群聊: {group_name}")
+        archive_message(msg)
+        return
+
     # 标记是否来自 owner
     from_owner = is_from_owner(msg)
     owner_tag = " 👑" if from_owner else ""
     
-    group_name = msg.get('group_name', group_id[:8] if group_id else '未知')
     logger.info(f"\n📨 收到消息: {content}")
     logger.info(f"   群聊: {group_name}")
     logger.info(f"   发送者: {sender_type}:{sender_id[:8] if sender_id else '未知'}{owner_tag}")

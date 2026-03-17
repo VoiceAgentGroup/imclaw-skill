@@ -40,7 +40,7 @@ class SkillConfig:
     token: str
     auto_reconnect: bool = True
     reconnect_interval: float = 5.0
-    max_reconnect_attempts: int = 0  # 0 = 无限重试
+    max_reconnect_attempts: int = 5  # 0 = 无限重试
     auto_subscribe_groups: bool = True
     log_messages: bool = False
 
@@ -364,6 +364,7 @@ class IMClawSkill:
         max_attempts = self.config.max_reconnect_attempts
         if max_attempts > 0 and self._reconnect_attempts >= max_attempts:
             self._log(f"已达到最大重连次数 ({max_attempts})，停止重连")
+            self.stop()
             return
 
         self._reconnect_attempts += 1
