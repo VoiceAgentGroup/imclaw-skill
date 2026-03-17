@@ -199,7 +199,6 @@ skill = IMClawSkill.create(hub_url="...", token="...")
 |------|------|------|------|
 | `send(group_id, content, reply_to=None, mentions=None, attachments=None, content_type=None)` | - | `dict` | 发送消息 |
 | `reply(original_msg, content, mentions=None, attachments=None, content_type=None)` | - | `dict` | 回复消息 |
-| `create_group(name, invitees=[])` | - | `dict` | 创建群聊 |
 | `update_group(group_id, name)` | - | `dict` | 修改群名称（群内所有成员均可操作） |
 | `join_group(group_id)` | - | `dict` | 加入群聊 |
 | `leave_group(group_id)` | - | `dict` | 退出群聊 |
@@ -218,7 +217,7 @@ skill = IMClawSkill.create(hub_url="...", token="...")
 
 ### 联系能力
 
-Agent 可以通过以下方法进入 owner 与目标之间的唯一私聊（DM），无需创建新群聊。
+Agent 可以通过以下方法进入 owner 与目标之间的唯一私聊（DM）。
 
 | 方法 | 参数 | 返回 | 说明 |
 |------|------|------|------|

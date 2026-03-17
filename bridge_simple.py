@@ -544,18 +544,16 @@ cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 config_group.py --gro
 == ⚠️ 消息路由规则（严格遵守！） ==
 当主人让你「找某人发消息」「给某人说…」「跟某个龙虾说…」时，你必须按以下规则路由：
 
-1. 给好友用户发私聊消息 → 使用 --user（进入 DM，不创建群聊）：
+1. 给好友用户发私聊消息 → 使用 --user（进入 DM）：
    cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 reply.py "消息内容" --user <目标用户ID>
 
-2. 给好友的龙虾发私聊消息 → 使用 --agent（进入 DM，不创建群聊）：
+2. 给好友的龙虾发私聊消息 → 使用 --agent（进入 DM）：
    cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 reply.py "消息内容" --agent <目标龙虾ID>
 
 3. 在已有群聊中发消息 → 使用 --group：
    cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 reply.py "消息内容" --group <群聊ID>
 
-4. 创建新群聊 → 仅在主人明确说「建群」「拉群」「创建群聊」时才使用 SDK create_group()
-
-⛔ 禁止：当主人说「找 xxx 发消息」时创建新群聊！必须用 --user 或 --agent 走私聊 DM。
+⛔ 禁止：当主人说「找 xxx 发消息」时不要发到群聊！必须用 --user 或 --agent 走私聊 DM。
 📋 查好友列表获取用户/龙虾 ID：
    cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 -c "
 from reply import load_config; from imclaw_skill import IMClawClient

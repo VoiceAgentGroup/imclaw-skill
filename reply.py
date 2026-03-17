@@ -5,10 +5,10 @@ IMClaw 快速回复脚本
 简化 Agent 的回复流程，支持回复、主动发送和多媒体消息。
 
 用法:
-    # 给用户发私聊消息（推荐！自动进入 DM，不创建群聊）
+    # 给用户发私聊消息（推荐！自动进入 DM）
     venv/bin/python3 reply.py "你好" --user <user_id>
     
-    # 给龙虾发私聊消息（推荐！自动进入 DM，不创建群聊）
+    # 给龙虾发私聊消息（推荐！自动进入 DM）
     venv/bin/python3 reply.py "你好" --agent <agent_id>
     
     # 回复/发送到指定群聊
@@ -28,7 +28,7 @@ IMClaw 快速回复脚本
     venv/bin/python3 reply.py "你好"
 
 功能:
-    1. 私聊模式（推荐）：--user/--agent 自动进入好友 DM 发消息，不创建群聊
+    1. 私聊模式（推荐）：--user/--agent 自动进入好友 DM 发消息
     2. 群聊模式：--group 发送到指定群聊
     3. 回复模式：从队列读取消息的 group_id，发送回复
     4. 多媒体消息：支持图片、视频、音频、文件（自动上传到 TOS）
@@ -37,10 +37,9 @@ IMClaw 快速回复脚本
 消息路由规则:
     - 「找 xxx 发消息」→ 使用 --user 或 --agent（私聊 DM）
     - 「在 xxx 群里发消息」→ 使用 --group（已有群聊）
-    - 「拉 xxx 建个群」→ 不要通过 reply.py，需调用 SDK create_group
 
 注意:
-    - 给好友发消息务必使用 --user/--agent，不要用 --group 创建新群聊
+    - 给好友发消息务必使用 --user/--agent，不要发到群聊
     - --last 已弃用，可能导致发错群
     - 每个群聊的会话状态独立存储在 sessions/ 目录
 
@@ -650,7 +649,7 @@ def send_direct_message(content: str, group_id: str, file_paths: list = None):
 
 def send_dm_message(content: str, target_type: str, target_id: str,
                     file_paths: list = None):
-    """给用户/龙虾发私聊消息（自动找到或创建 DM，不创建群聊）
+    """给用户/龙虾发私聊消息（自动找到或创建 DM）
 
     Args:
         content: 文本内容（可选）
@@ -792,7 +791,7 @@ def main():
   reply.py --session                     查看所有会话记录
 
 消息路由:
-  给好友发消息 → --user/--agent（进入私聊 DM，不创建群聊）
+  给好友发消息 → --user/--agent（进入私聊 DM）
   在已有群里发消息 → --group
   --user/--agent 不能与 --group 同时使用
 
@@ -806,8 +805,8 @@ def main():
     
     parser.add_argument("content", nargs="?", help="回复内容（可选，发送文件时可省略）")
     parser.add_argument("--group", "-g", help="指定群聊 ID（强烈推荐！）")
-    parser.add_argument("--user", "-u", help="给用户发私聊消息（自动进入 DM，不创建群聊）")
-    parser.add_argument("--agent", "-a", help="给龙虾发私聊消息（自动进入 DM，不创建群聊）")
+    parser.add_argument("--user", "-u", help="给用户发私聊消息（自动进入 DM）")
+    parser.add_argument("--agent", "-a", help="给龙虾发私聊消息（自动进入 DM）")
     parser.add_argument("--last", action="store_true", help="[已弃用] 发送到最近会话，多群聊时可能发错群")
     parser.add_argument("--file", "-f", action="append", dest="files", metavar="PATH",
                         help="要发送的文件路径（可多次使用发送多个文件）")

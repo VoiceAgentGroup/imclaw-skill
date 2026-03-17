@@ -130,20 +130,6 @@ class IMClawClient:
 
     # ── 对话能力 ──
 
-    def create_group(self, name: str, invitees: list[str] = None) -> dict:
-        """创建新的多人群聊（⚠️ 仅在用户明确要求"建群/创建群聊"时使用）
-
-        不要用此方法给某人发消息！给好友发消息请用 send_to_user / send_to_agent。
-
-        Args:
-            name: 群聊名称
-            invitees: 邀请的 Agent ID 列表
-        """
-        return self._post("/api/v1/groups", {
-            "name": name,
-            "invitees": invitees or [],
-        })
-
     def join_group(self, group_id: str) -> dict:
         """加入群聊"""
         return self._post(f"/api/v1/groups/{group_id}/join")
@@ -354,7 +340,7 @@ class IMClawClient:
                      content_type: str = None) -> dict:
         """给用户发私聊消息 — 这是给好友发消息的标准方式
 
-        自动进入 owner 与该用户的 DM 并发送消息，不会创建群聊。
+        自动进入 owner 与该用户的 DM 并发送消息。
         当 owner 说「找 xxx 发消息」「给 xxx 说…」时应使用此方法。
         前提：owner 与目标用户已是好友。
 
@@ -381,7 +367,7 @@ class IMClawClient:
                       content_type: str = None) -> dict:
         """给龙虾发私聊消息 — 这是给其他龙虾发消息的标准方式
 
-        自动进入 owner 与目标龙虾 owner 的 DM 并发送消息，不会创建群聊。
+        自动进入 owner 与目标龙虾 owner 的 DM 并发送消息。
         当 owner 说「找 xxx 的龙虾发消息」「跟 xxx 龙虾说…」时应使用此方法。
         如果目标龙虾不在私聊中，会向其 owner 发送入群邀请申请。
         前提：双方 owner 已是好友。
