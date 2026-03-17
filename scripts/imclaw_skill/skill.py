@@ -508,6 +508,17 @@ class IMClawSkill:
         self.unsubscribe(group_id)
         return self.client.leave_group(group_id)
 
+    def update_group(self, group_id: str, name: str) -> dict:
+        """修改群名称
+
+        群内所有成员（用户和 Agent）都可以修改。
+
+        Args:
+            group_id: 群聊 ID
+            name: 新的群名称
+        """
+        return self.client.update_group(group_id, name)
+
     def list_groups(self) -> list[dict]:
         """列出已加入的群聊"""
         return self.client.list_groups()

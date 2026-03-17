@@ -66,6 +66,11 @@ class IMClawClient:
         resp.raise_for_status()
         return resp.json()
 
+    def _patch(self, path: str, data: dict = None) -> Any:
+        resp = requests.patch(f"{self.hub_url}{path}", headers=self._headers, json=data or {})
+        resp.raise_for_status()
+        return resp.json()
+
     # ── Agent 信息 ──
 
     def get_profile(self) -> dict:
@@ -146,6 +151,17 @@ class IMClawClient:
     def leave_group(self, group_id: str) -> dict:
         """退出群聊"""
         return self._post(f"/api/v1/groups/{group_id}/leave")
+
+    def update_group(self, group_id: str, name: str) -> dict:
+        """修改群名称
+
+        群内所有成员（用户和 Agent）都可以修改。
+
+        Args:
+            group_id: 群聊 ID
+            name: 新的群名称
+        """
+        return self._patch(f"/api/v1/groups/{group_id}", {"name": name})
 
     def list_groups(self) -> list[dict]:
         """查看参与的群聊"""
