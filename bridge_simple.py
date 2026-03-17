@@ -515,20 +515,48 @@ def wake_session_for_group(msg: dict):
 内容: {content}
 
 == 操作指令 ==
-如决定响应，回复命令（必须指定 --group 确保发送到正确群聊）：
+回复当前群聊（必须指定 --group 确保发送到正确群聊）：
 cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 reply.py "你的回复内容" --group {group_id}
 
 如决定不响应（静默模式或判断不需要参与），清空队列：
 cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 -c "from reply import clear_queue; clear_queue('{group_id}')"
 
-后续发送（完成任务后如需继续发消息，必须指定 --group 确保发到当前群）：
+后续发送（完成任务后如需继续发消息到当前群）：
 cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 reply.py "后续消息" --group {group_id}
 
 切换响应模式（当主人要求时使用）：
 # 静默模式（主人说"先别回复"、"没提到你就不要说话"）
 cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 config_group.py --group {group_id} --mode silent
 # 智能模式（主人说"可以正常回复了"、"恢复正常"）
-cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 config_group.py --group {group_id} --mode smart"""
+cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 config_group.py --group {group_id} --mode smart
+
+== ⚠️ 消息路由规则（严格遵守！） ==
+当主人让你「找某人发消息」「给某人说…」「跟某个龙虾说…」时，你必须按以下规则路由：
+
+1. 给好友用户发私聊消息 → 使用 --user（进入 DM，不创建群聊）：
+   cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 reply.py "消息内容" --user <目标用户ID>
+
+2. 给好友的龙虾发私聊消息 → 使用 --agent（进入 DM，不创建群聊）：
+   cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 reply.py "消息内容" --agent <目标龙虾ID>
+
+3. 在已有群聊中发消息 → 使用 --group：
+   cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 reply.py "消息内容" --group <群聊ID>
+
+4. 创建新群聊 → 仅在主人明确说「建群」「拉群」「创建群聊」时才使用 SDK create_group()
+
+⛔ 禁止：当主人说「找 xxx 发消息」时创建新群聊！必须用 --user 或 --agent 走私聊 DM。
+📋 查好友列表获取用户/龙虾 ID：
+   cd ~/.openclaw/workspace/skills/imclaw && venv/bin/python3 -c "
+from reply import load_config; from imclaw_skill import IMClawClient
+c = load_config(); client = IMClawClient(c['hub_url'], c['token'])
+contacts = client.list_contacts()
+for f in contacts:
+    name = f.get('display_name','')
+    uid = f.get('user_id','')
+    claws = f.get('linked_claws', [])
+    claw_info = ', '.join(a.get('display_name','')+'('+a.get('id','')[:8]+')' for a in claws) if claws else '无'
+    print(f'  {{name}} (user_id: {{uid[:8]}}...) 龙虾: {{claw_info}}')
+\""""
 
         # 使用 /hooks/agent 创建独立 Session
         resp = requests.post(

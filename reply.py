@@ -5,12 +5,18 @@ IMClaw 快速回复脚本
 简化 Agent 的回复流程，支持回复、主动发送和多媒体消息。
 
 用法:
-    # 回复/发送到指定群聊（推荐！始终使用 --group 避免发错群）
+    # 给用户发私聊消息（推荐！自动进入 DM，不创建群聊）
+    venv/bin/python3 reply.py "你好" --user <user_id>
+    
+    # 给龙虾发私聊消息（推荐！自动进入 DM，不创建群聊）
+    venv/bin/python3 reply.py "你好" --agent <agent_id>
+    
+    # 回复/发送到指定群聊
     venv/bin/python3 reply.py "回复内容" --group <group_id>
     
     # 发送图片/文件（可带文字说明）
     venv/bin/python3 reply.py --file photo.jpg --group <group_id>
-    venv/bin/python3 reply.py "看看这张图" --file photo.jpg --group <group_id>
+    venv/bin/python3 reply.py "看看这张图" --file photo.jpg --user <user_id>
     
     # 发送多个文件
     venv/bin/python3 reply.py --file a.jpg --file b.png --group <group_id>
@@ -22,13 +28,19 @@ IMClaw 快速回复脚本
     venv/bin/python3 reply.py "你好"
 
 功能:
-    1. 回复模式：从队列读取消息的 group_id，发送回复
-    2. 主动发送模式：指定 --group 时，即使队列为空也能发送消息
-    3. 多媒体消息：支持图片、视频、音频、文件（自动上传到 TOS）
-    4. 自动归档所有发送的消息并保存会话上下文（每个群聊独立）
+    1. 私聊模式（推荐）：--user/--agent 自动进入好友 DM 发消息，不创建群聊
+    2. 群聊模式：--group 发送到指定群聊
+    3. 回复模式：从队列读取消息的 group_id，发送回复
+    4. 多媒体消息：支持图片、视频、音频、文件（自动上传到 TOS）
+    5. 自动归档所有发送的消息并保存会话上下文（每个群聊独立）
+
+消息路由规则:
+    - 「找 xxx 发消息」→ 使用 --user 或 --agent（私聊 DM）
+    - 「在 xxx 群里发消息」→ 使用 --group（已有群聊）
+    - 「拉 xxx 建个群」→ 不要通过 reply.py，需调用 SDK create_group
 
 注意:
-    - 多群聊并发时，务必使用 --group 参数指定目标群聊
+    - 给好友发消息务必使用 --user/--agent，不要用 --group 创建新群聊
     - --last 已弃用，可能导致发错群
     - 每个群聊的会话状态独立存储在 sessions/ 目录
 
@@ -558,6 +570,28 @@ def list_messages():
         print()
 
 
+def resolve_dm_group_id(config: dict, target_type: str, target_id: str) -> str:
+    """通过 contact-chat API 获取与目标的 DM group_id
+
+    Args:
+        config: 配置字典
+        target_type: "user" 或 "agent"
+        target_id: 目标用户/龙虾 ID
+
+    Returns:
+        DM 的 group_id
+
+    Raises:
+        Exception: API 调用失败时抛出
+    """
+    client = _make_client(config)
+    if target_type == "user":
+        result = client.contact_user(target_id)
+    else:
+        result = client.contact_agent(target_id)
+    return result["group_id"]
+
+
 def send_direct_message(content: str, group_id: str, file_paths: list = None):
     """主动发送消息到指定群聊（不依赖队列，支持附件）
     
@@ -612,6 +646,36 @@ def send_direct_message(content: str, group_id: str, file_paths: list = None):
         except:
             pass
         return False
+
+
+def send_dm_message(content: str, target_type: str, target_id: str,
+                    file_paths: list = None):
+    """给用户/龙虾发私聊消息（自动找到或创建 DM，不创建群聊）
+
+    Args:
+        content: 文本内容（可选）
+        target_type: "user" 或 "agent"
+        target_id: 目标用户/龙虾 ID
+        file_paths: 文件路径列表
+
+    Returns:
+        True: 发送成功
+        False: 发送失败
+    """
+    label = "用户" if target_type == "user" else "龙虾"
+    print(f"📤 正在给{label}发私聊消息...")
+    print(f"   目标: {target_type}:{target_id}")
+
+    config = load_config()
+
+    try:
+        group_id = resolve_dm_group_id(config, target_type, target_id)
+        print(f"   私聊 ID: {group_id}")
+    except Exception as e:
+        print(f"❌ 无法进入私聊: {e}")
+        return False
+
+    return send_direct_message(content, group_id, file_paths)
 
 
 def reply_to_message(content: str = None, target_group_id: str = None, 
@@ -718,16 +782,19 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  reply.py "内容" --group xxx            回复/发送到指定群聊（推荐！）
-  reply.py "看看这个" --file doc.pdf -g xxx   发送文件+文字说明
-  reply.py --file a.jpg --file b.png -g xxx   发送多个文件
+  reply.py "你好" --user <user_id>       给用户发私聊消息（推荐！）
+  reply.py "你好" --agent <agent_id>     给龙虾发私聊消息（推荐！）
+  reply.py "内容" --group <group_id>     发送到指定群聊
+  reply.py "看看" --file doc.pdf -u xxx  发送文件+文字（私聊）
+  reply.py --file a.jpg -g xxx           发送文件到群聊
 
   reply.py --list                        查看待回复消息
   reply.py --session                     查看所有会话记录
 
-注意:
-  多群聊并发时务必使用 --group 参数，避免消息发错群！
-  --last 已弃用，不推荐使用。
+消息路由:
+  给好友发消息 → --user/--agent（进入私聊 DM，不创建群聊）
+  在已有群里发消息 → --group
+  --user/--agent 不能与 --group 同时使用
 
 支持的文件类型:
   图片: jpg, jpeg, png, gif, webp, svg (最大 10MB)
@@ -739,6 +806,8 @@ def main():
     
     parser.add_argument("content", nargs="?", help="回复内容（可选，发送文件时可省略）")
     parser.add_argument("--group", "-g", help="指定群聊 ID（强烈推荐！）")
+    parser.add_argument("--user", "-u", help="给用户发私聊消息（自动进入 DM，不创建群聊）")
+    parser.add_argument("--agent", "-a", help="给龙虾发私聊消息（自动进入 DM，不创建群聊）")
     parser.add_argument("--last", action="store_true", help="[已弃用] 发送到最近会话，多群聊时可能发错群")
     parser.add_argument("--file", "-f", action="append", dest="files", metavar="PATH",
                         help="要发送的文件路径（可多次使用发送多个文件）")
@@ -781,6 +850,14 @@ def main():
         print("\n❌ 请提供回复内容或文件")
         sys.exit(1)
     
+    if args.user and args.agent:
+        print("❌ --user 和 --agent 不能同时指定")
+        sys.exit(1)
+
+    if (args.user or args.agent) and args.group:
+        print("❌ --user/--agent 不能与 --group 同时使用")
+        sys.exit(1)
+
     file_paths = None
     if args.files:
         file_paths = [Path(f) for f in args.files]
@@ -789,12 +866,17 @@ def main():
             if not is_valid:
                 print(f"❌ {error}")
                 sys.exit(1)
-    
-    result = reply_to_message(
-        args.content, args.group, 
-        use_last_session=args.last,
-        file_paths=file_paths
-    )
+
+    if args.user:
+        result = send_dm_message(args.content, "user", args.user, file_paths)
+    elif args.agent:
+        result = send_dm_message(args.content, "agent", args.agent, file_paths)
+    else:
+        result = reply_to_message(
+            args.content, args.group, 
+            use_last_session=args.last,
+            file_paths=file_paths
+        )
     sys.exit(1 if result is False else 0)
 
 

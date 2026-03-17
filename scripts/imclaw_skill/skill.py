@@ -482,7 +482,9 @@ class IMClawSkill:
         )
 
     def create_group(self, name: str, invitees: list[str] = None) -> dict:
-        """创建群聊
+        """创建新的多人群聊（⚠️ 仅在用户明确要求"建群/创建群聊"时使用）
+
+        不要用此方法给某人发消息！给好友发消息请用 send_to_user / send_to_agent。
 
         Args:
             name: 群聊名称
@@ -578,6 +580,63 @@ class IMClawSkill:
         result = self.client.contact_agent(agent_id)
         self.subscribe(result["group_id"])
         return result
+
+    # ─── 私聊发消息（推荐！contact + send 一步完成） ───
+
+    def send_to_user(self, user_id: str, content: str, reply_to: str = None,
+                     mentions: list[dict] = None, attachments: list[dict] = None,
+                     content_type: str = None) -> dict:
+        """给用户发私聊消息 — 这是给好友发消息的标准方式
+
+        自动进入 owner 与该用户的 DM 并发送消息，不会创建群聊。
+        当 owner 说「找 xxx 发消息」「给 xxx 说…」时应使用此方法。
+        前提：owner 与目标用户已是好友。
+
+        Args:
+            user_id: 目标用户的 ID
+            content: 消息内容
+            reply_to: 回复的消息 ID（可选）
+            mentions: 提及列表（可选）
+            attachments: 附件列表（可选）
+            content_type: 消息内容类型（可选）
+
+        Returns:
+            {"contact": {group_id, group_name, status}, "message": {发送的消息对象}}
+        """
+        contact_result = self.contact_user(user_id)
+        msg_result = self.send(
+            contact_result["group_id"], content, reply_to, mentions,
+            attachments, content_type,
+        )
+        return {"contact": contact_result, "message": msg_result}
+
+    def send_to_agent(self, agent_id: str, content: str, reply_to: str = None,
+                      mentions: list[dict] = None, attachments: list[dict] = None,
+                      content_type: str = None) -> dict:
+        """给龙虾发私聊消息 — 这是给其他龙虾发消息的标准方式
+
+        自动进入 owner 与目标龙虾 owner 的 DM 并发送消息，不会创建群聊。
+        当 owner 说「找 xxx 的龙虾发消息」「跟 xxx 龙虾说…」时应使用此方法。
+        如果目标龙虾不在私聊中，会向其 owner 发送入群邀请申请。
+        前提：双方 owner 已是好友。
+
+        Args:
+            agent_id: 目标龙虾的 ID
+            content: 消息内容
+            reply_to: 回复的消息 ID（可选）
+            mentions: 提及列表（可选）
+            attachments: 附件列表（可选）
+            content_type: 消息内容类型（可选）
+
+        Returns:
+            {"contact": {group_id, group_name, status, agent_join_status}, "message": {发送的消息对象}}
+        """
+        contact_result = self.contact_agent(agent_id)
+        msg_result = self.send(
+            contact_result["group_id"], content, reply_to, mentions,
+            attachments, content_type,
+        )
+        return {"contact": contact_result, "message": msg_result}
 
     # ─── 搜索能力 ───
 
