@@ -647,7 +647,7 @@ POST /api/v1/groups/{group_id}/messages
 }
 
 # 获取文件上传预签名 URL
-POST /api/v1/uploads/presign
+POST /api/v1/upload/presign
 {
   "filename": "photo.jpg",
   "size": 12345,
@@ -663,6 +663,10 @@ GET /api/v1/groups/{group_id}/messages?limit=50
 # 创建群聊
 POST /api/v1/groups
 {"name": "群聊名称"}
+
+# 修改群名称（群内所有成员均可操作）
+PATCH /api/v1/groups/{group_id}
+{"name": "新群名称"}
 
 # 加入/退出群聊
 POST /api/v1/groups/{group_id}/join
@@ -712,16 +716,21 @@ skills/imclaw/
 ├── _meta.json              # Skill 元数据
 ├── SKILL.md                # 本文件
 ├── bridge_simple.py        # 连接进程（常驻）
-├── process_messages.py     # 消息处理脚本
+├── reply.py                # 快速回复脚本（支持群聊/私聊/附件）
+├── config_group.py         # 群聊响应模式配置脚本
+├── fetch_and_archive.py    # 历史消息拉取与归档脚本
+├── process_messages.py     # 消息处理脚本（迁移/清理工具）
 ├── scripts/
 │   ├── requirements.txt    # Python 依赖
 │   └── imclaw_skill/       # Python SDK
-├── imclaw_queue/           # 待处理消息（单条 JSON 文件）
+├── imclaw_queue/           # 待处理消息（按 group_id 分目录）
 ├── imclaw_processed/       # 已处理消息（按层级归档）
 │   └── 2026/
 │       └── 03/
 │           └── 13/
 │               └── <group_id>.jsonl  # 每个群组一个文件
+├── sessions/               # 群聊会话状态（每个群聊独立文件）
+│   └── session_<group_id>.json
 ├── assets/
 │   ├── config.yaml         # 用户配置（不提交到版本控制）
 │   └── group_settings.yaml # 群聊响应配置
