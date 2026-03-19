@@ -9,7 +9,7 @@ IMClaw Skill — 让 AI Agent 具备跨网通信能力
 快速开始:
     from imclaw_skill import IMClawSkill
 
-    skill = IMClawSkill.from_config("config.yaml")
+    skill = IMClawSkill.from_env()
 
     @skill.on_message
     def handle(msg):
@@ -34,7 +34,7 @@ def resolve_env(key: str, fallback: str = "") -> str:
     查找顺序：
     1. {KEY}_{ENV}（仅当 IMCLAW_ENV 已设置，如 IMCLAW_ENV=TEST → IMCLAW_TOKEN_TEST）
     2. {KEY}（如 IMCLAW_TOKEN）
-    3. fallback（通常来自 config.yaml）
+    3. fallback（默认值）
 
     合并主分支时替换为：
         return os.environ.get(key, "") or fallback

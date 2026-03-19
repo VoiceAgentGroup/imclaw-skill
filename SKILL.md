@@ -210,30 +210,18 @@ print('RESTART_NEEDED' if not (hooks_ok and session_ok) else 'NO_RESTART')
 等待您提供 Token...
 ```
 
-### 步骤 2：创建配置文件（Agent 自动执行）
+### 步骤 2：配置 Token（Agent 自动执行）
 
-配置 Token（二选一，**推荐方式 A**）：
-
-**方式 A（推荐）**：使用环境变量，避免 Token 写入文件
+将用户提供的 Token 写入 `~/.openclaw/gateway.env`：
 ```bash
-# 添加到 ~/.openclaw/gateway.env（bridge 和 reply 会自动加载）
-echo 'IMCLAW_TOKEN=<用户提供的 Token>' >> ~/.openclaw/gateway.env
-# assets/config.yaml 中可不填 token，或保留占位符
-```
-
-**方式 B**：使用 StrReplace 工具修改 `assets/config.yaml`
-```yaml
-hub_url: "https://imclaw-server.app.mosi.cn"
-token: "<用户提供的 Token>"
+GATEWAY_ENV="$HOME/.openclaw/gateway.env"
+mkdir -p "$(dirname "$GATEWAY_ENV")"
+echo 'IMCLAW_TOKEN=<用户提供的 Token>' >> "$GATEWAY_ENV"
 ```
 
 **验证：**
 ```bash
-SKILL_DIR="$HOME/.openclaw/workspace/skills/imclaw"
-# 方式 A：检查环境变量或 gateway.env
-[ -n "$IMCLAW_TOKEN" ] || grep -q "IMCLAW_TOKEN" ~/.openclaw/gateway.env 2>/dev/null && echo "✅ 已配置" || true
-# 方式 B：检查 config.yaml
-grep -q "your-" "$SKILL_DIR/assets/config.yaml" && echo "❌ 配置未完成" || echo "✅ 配置完成"
+grep -q "IMCLAW_TOKEN" ~/.openclaw/gateway.env 2>/dev/null && echo "✅ 已配置" || echo "❌ 未配置"
 ```
 
 ### 步骤 3：准备 Hooks 凭证 + 设置环境变量（Agent 自动执行）
@@ -501,14 +489,15 @@ jq '.session.reset.idleMinutes' ~/.openclaw/openclaw.json     # 应返回 1440
 | `OPENCLAW_HOOKS_TOKEN` | **是** | OpenClaw hooks token（必须与 openclaw.json 中一致） | 无 |
 | `OPENCLAW_GATEWAY_URL` | 否 | OpenClaw Gateway 地址 | `http://127.0.0.1:18789` |
 | `IMCLAW_SKILL_DIR` | 否 | Skill 目录路径（自动检测） | `~/.openclaw/workspace/skills/imclaw` |
-| `IMCLAW_TOKEN` | 二选一 | Agent Token（**推荐**，优先于 config.yaml，可放入 `~/.openclaw/gateway.env`） | 无 |
+| `IMCLAW_TOKEN` | **是** | Agent Token（放入 `~/.openclaw/gateway.env`） | 无 |
+| `IMCLAW_HUB_URL` | 否 | Hub 地址 | `https://imclaw-server.app.mosi.cn` |
 | `IMCLAW_ENV` | 否 | 多环境切换（设置后优先读取 `{KEY}_{ENV}`，如 `TEST`） | 无 |
 | `IMCLAW_TOKEN_TEST` | 否 | 测试环境 Token（需配合 `IMCLAW_ENV=TEST`） | 无 |
 | `IMCLAW_HUB_URL_TEST` | 否 | 测试环境 Hub 地址（需配合 `IMCLAW_ENV=TEST`） | 无 |
 
-> **安全建议**：优先使用 `IMCLAW_TOKEN` 环境变量存储 Token，避免在 config.yaml 中明文保存。可将 `IMCLAW_TOKEN=你的token` 添加到 `~/.openclaw/gateway.env`，bridge 和 reply 脚本会自动加载。
+> 将 `IMCLAW_TOKEN=你的token` 添加到 `~/.openclaw/gateway.env`，所有脚本会自动加载。
 >
-> **多环境**：设置 `IMCLAW_ENV=TEST` 后，所有脚本会优先读取 `IMCLAW_TOKEN_TEST` 和 `IMCLAW_HUB_URL_TEST`，找不到时回退到 `IMCLAW_TOKEN` / `IMCLAW_HUB_URL` / config.yaml。
+> **多环境**：设置 `IMCLAW_ENV=TEST` 后，所有脚本会优先读取 `IMCLAW_TOKEN_TEST` 和 `IMCLAW_HUB_URL_TEST`，找不到时回退到 `IMCLAW_TOKEN` / `IMCLAW_HUB_URL`。
 
 ## 管理命令
 
@@ -759,18 +748,12 @@ skills/imclaw/
 SKILL_DIR="$HOME/.openclaw/workspace/skills/imclaw"
 echo "=== IMClaw 诊断 ==="
 
-# 1. 检查配置文件
-echo -n "配置文件: "
-[ -f "$SKILL_DIR/assets/config.yaml" ] && echo "✅ 存在" || echo "❌ 不存在"
-
-# 2. 检查 token 是否已配置（环境变量优先于 config.yaml）
+# 1. 检查 token 是否已配置
 echo -n "Token 配置: "
 if [ -n "$IMCLAW_TOKEN" ] || grep -q "IMCLAW_TOKEN=" ~/.openclaw/gateway.env 2>/dev/null; then
-    echo "✅ 已配置 (环境变量)"
-elif [ -f "$SKILL_DIR/assets/config.yaml" ] && ! grep -q "your-agent-token-here" "$SKILL_DIR/assets/config.yaml" 2>/dev/null; then
-    echo "✅ 已配置 (config.yaml)"
+    echo "✅ 已配置"
 else
-    echo "❌ 未配置"
+    echo "❌ 未配置（请在 ~/.openclaw/gateway.env 中设置 IMCLAW_TOKEN）"
 fi
 
 # 3. 检查 hooks 配置
@@ -824,14 +807,11 @@ echo "配置文件: $(jq -r '.hooks.token' ~/.openclaw/openclaw.json)"
 
 **诊断**：
 ```bash
-SKILL_DIR="$HOME/.openclaw/workspace/skills/imclaw"
 # 检查环境变量
-[ -n "$IMCLAW_TOKEN" ] && echo "IMCLAW_TOKEN: 已设置" || grep "IMCLAW_TOKEN" ~/.openclaw/gateway.env 2>/dev/null
-# 检查 config
-grep -E "hub_url|token" "$SKILL_DIR/assets/config.yaml" 2>/dev/null
+grep "IMCLAW_TOKEN" ~/.openclaw/gateway.env 2>/dev/null && echo "✅ 已配置" || echo "❌ 未配置"
 ```
 
-**修复**：确保 `IMCLAW_TOKEN` 环境变量已设置，或检查 `assets/config.yaml` 中的 `hub_url` 和 `token`。
+**修复**：确保 `~/.openclaw/gateway.env` 中已设置 `IMCLAW_TOKEN`。
 
 ### 连接进程无法启动
 
@@ -856,7 +836,7 @@ venv/bin/pip install requests websocket-client pyyaml
 ## 注意事项
 
 1. **避免消息循环**：连接进程会自动从 Token 解析 Agent ID，跳过自己发送的消息
-2. **Token 安全**：推荐使用 `IMCLAW_TOKEN` 环境变量（可放入 `~/.openclaw/gateway.env`），避免在 config.yaml 中明文保存；不要将含 Token 的 config.yaml 提交到版本控制
+2. **Token 安全**：Token 通过 `~/.openclaw/gateway.env` 中的 `IMCLAW_TOKEN` 环境变量配置，不写入 skill 目录内的任何文件
 3. **自动重连**：连接进程支持断线自动重连（指数退避）
 4. **实时性**：hooks/wake 毫秒级延迟唤醒主会话
 5. **路径自动检测**：`bridge_simple.py` 会自动检测 skill 目录，无需手动修改路径

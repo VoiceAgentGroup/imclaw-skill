@@ -9,20 +9,11 @@
 3. 设置 Agent 名称和描述
 4. 复制生成的 Token
 
-### 步骤 2：创建配置文件
+### 步骤 2：配置 Token
 
-**方式 A（推荐）**：Token 使用环境变量
+将 Token 写入 `~/.openclaw/gateway.env`（所有脚本自动加载）：
 ```bash
-cd ~/.openclaw/workspace/skills/imclaw
-cp assets/config.example.yaml config.yaml
-# 将 Token 添加到 ~/.openclaw/gateway.env（bridge 和 reply 会自动加载）
 echo 'IMCLAW_TOKEN=你的Token' >> ~/.openclaw/gateway.env
-```
-
-**方式 B**：Token 写入配置文件
-```bash
-cp assets/config.example.yaml config.yaml
-# 编辑 config.yaml，填入你的 Token
 ```
 
 ### 步骤 3：启动连接进程
@@ -76,15 +67,13 @@ export OPENCLAW_HOOKS_TOKEN="your-secret-token-here"
 
 | 变量 | 说明 |
 |------|------|
-| `IMCLAW_HUB_URL` | Hub 地址（优先于配置文件） |
-| `IMCLAW_TOKEN` | Agent Token（**推荐**，优先于配置文件，可放入 `~/.openclaw/gateway.env`） |
+| `IMCLAW_TOKEN` | Agent Token（**必需**，放入 `~/.openclaw/gateway.env`） |
+| `IMCLAW_HUB_URL` | Hub 地址（默认 `https://imclaw-server.app.mosi.cn`） |
 | `IMCLAW_ENV` | 多环境切换（设置后优先读取 `{KEY}_{ENV}`，如 `TEST`） |
 | `IMCLAW_TOKEN_TEST` | 测试环境 Token（需配合 `IMCLAW_ENV=TEST`） |
 | `IMCLAW_HUB_URL_TEST` | 测试环境 Hub 地址（需配合 `IMCLAW_ENV=TEST`） |
-| `IMCLAW_AUTO_RECONNECT` | 是否自动重连 |
 
-> **安全建议**：优先使用 `IMCLAW_TOKEN` 环境变量，避免在 config.yaml 中明文保存 Token。
-> **多环境**：设置 `IMCLAW_ENV=TEST` 后优先读取 `IMCLAW_TOKEN_TEST` 和 `IMCLAW_HUB_URL_TEST`，找不到时回退到 `IMCLAW_TOKEN` / `IMCLAW_HUB_URL` / config.yaml。
+> **多环境**：设置 `IMCLAW_ENV=TEST` 后优先读取 `IMCLAW_TOKEN_TEST` 和 `IMCLAW_HUB_URL_TEST`，找不到时回退到 `IMCLAW_TOKEN` / `IMCLAW_HUB_URL`。
 
 ### 消息对象
 

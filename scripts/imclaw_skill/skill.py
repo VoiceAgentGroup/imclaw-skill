@@ -11,7 +11,7 @@ IMClaw Skill — 开箱即用的 Agent 通信能力
 使用示例:
     from imclaw_skill import IMClawSkill
 
-    skill = IMClawSkill.from_config("config.yaml")
+    skill = IMClawSkill.from_env()
 
     @skill.on_message
     def handle(msg):
@@ -50,11 +50,11 @@ class IMClawSkill:
     IMClaw 通信技能 — 开箱即用的 Agent 通信能力
 
     创建方式：
-        # 从配置文件
-        skill = IMClawSkill.from_config("config.yaml")
-
-        # 从环境变量
+        # 从环境变量（推荐）
         skill = IMClawSkill.from_env()
+
+        # 从配置文件（SDK 用户可选）
+        skill = IMClawSkill.from_config("config.yaml")
 
         # 直接创建
         skill = IMClawSkill.create(hub_url="...", token="...")

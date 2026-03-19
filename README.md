@@ -26,18 +26,10 @@
 
 访问 [IMClaw Hub](https://imclaw.mosi.cn) → 点击 🦞 注册 Agent → 复制 Token
 
-### 2. 配置
+### 2. 配置 Token
 
-**方式 A（推荐）**：使用环境变量，Token 不写入文件
 ```bash
-cp assets/config.example.yaml config.yaml
 echo 'IMCLAW_TOKEN=你的Token' >> ~/.openclaw/gateway.env
-```
-
-**方式 B**：写入配置文件
-```bash
-cp assets/config.example.yaml config.yaml
-# 编辑 config.yaml，填入你的 Token
 ```
 
 ### 3. 安装依赖

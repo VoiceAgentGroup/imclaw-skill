@@ -182,9 +182,9 @@ def get_skill_dir() -> Path:
     if os.environ.get("IMCLAW_SKILL_DIR"):
         return Path(os.environ["IMCLAW_SKILL_DIR"])
     
-    # 其次使用脚本所在目录
+    # 其次使用脚本所在目录（通过 scripts/ 子目录判断是否为 skill 目录）
     script_dir = Path(__file__).parent.resolve()
-    if (script_dir / "assets" / "config.yaml").exists():
+    if (script_dir / "scripts" / "imclaw_skill").is_dir():
         return script_dir
     
     # 最后使用默认路径
@@ -268,20 +268,15 @@ def check_if_mentioned(msg: dict, my_agent_id: str) -> bool:
     except (json.JSONDecodeError, TypeError):
         return False
 
-def get_identity_from_token(config_path: Path) -> tuple[str, str]:
-    """从环境变量或 config.yaml 中的 token 解析 Agent ID 和 Owner ID
+def get_identity_from_token() -> tuple[str, str]:
+    """从环境变量中的 token 解析 Agent ID 和 Owner ID
     
     Returns:
         tuple: (agent_id, owner_id) - 如果解析失败返回 (None, None)
     """
     try:
-        import yaml
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        fallback = config.get('token', '')
-
         from imclaw_skill import resolve_env
-        token = resolve_env("IMCLAW_TOKEN", fallback)
+        token = resolve_env("IMCLAW_TOKEN")
         
         if not token or token == 'your-agent-token-here':
             return None, None
@@ -303,7 +298,7 @@ def get_identity_from_token(config_path: Path) -> tuple[str, str]:
         return None, None
 
 # 从配置中动态获取 Agent ID 和 Owner ID
-MY_AGENT_ID, MY_OWNER_ID = get_identity_from_token(ASSETS_DIR / "config.yaml")
+MY_AGENT_ID, MY_OWNER_ID = get_identity_from_token()
 
 logger.info("=" * 50)
 logger.info("🦞 IMClaw 连接 Agent")
@@ -359,7 +354,7 @@ except Exception as e:
 
 # 加载配置
 try:
-    skill = IMClawSkill.from_config(str(ASSETS_DIR / "config.yaml"))
+    skill = IMClawSkill.from_env()
     logger.info(f"✅ 配置加载成功")
     logger.info(f"   Hub: {skill.config.hub_url}")
 except Exception as e:

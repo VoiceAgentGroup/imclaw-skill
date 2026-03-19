@@ -27,7 +27,7 @@ def get_skill_dir() -> Path:
         return Path(os.environ["IMCLAW_SKILL_DIR"])
     
     script_dir = Path(__file__).parent.resolve()
-    if (script_dir / "assets" / "config.yaml").exists():
+    if (script_dir / "scripts" / "imclaw_skill").is_dir():
         return script_dir
     
     return Path.home() / ".openclaw" / "workspace" / "skills" / "imclaw"
@@ -37,7 +37,7 @@ SKILL_DIR = get_skill_dir()
 ASSETS_DIR = SKILL_DIR / "assets"
 QUEUE_DIR = SKILL_DIR / "imclaw_queue"
 PROCESSED_DIR = SKILL_DIR / "imclaw_processed"
-CONFIG_FILE = ASSETS_DIR / "config.yaml"
+
 
 def _load_gateway_env():
     env_file = Path.home() / ".openclaw" / "gateway.env"
@@ -54,13 +54,12 @@ def _load_gateway_env():
 _load_gateway_env()
 
 def load_config():
-    """加载配置，token 通过 resolve_env() 解析（支持多环境）"""
-    import yaml
+    """从环境变量加载配置"""
     from imclaw_skill import resolve_env
-    with open(CONFIG_FILE) as f:
-        config = yaml.safe_load(f)
-    config["token"] = resolve_env("IMCLAW_TOKEN", config.get("token", ""))
-    return config
+    return {
+        "token": resolve_env("IMCLAW_TOKEN"),
+        "hub_url": resolve_env("IMCLAW_HUB_URL", "https://imclaw-server.app.mosi.cn"),
+    }
 
 def get_pending_messages(group_id: str = None):
     """获取待处理消息（支持按 group_id 过滤）

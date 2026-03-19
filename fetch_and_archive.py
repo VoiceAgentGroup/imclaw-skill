@@ -35,7 +35,7 @@ def get_skill_dir() -> Path:
         return Path(os.environ["IMCLAW_SKILL_DIR"])
     
     script_dir = Path(__file__).parent.resolve()
-    if (script_dir / "assets" / "config.yaml").exists():
+    if (script_dir / "scripts" / "imclaw_skill").is_dir():
         return script_dir
     
     return Path.home() / ".openclaw" / "workspace" / "skills" / "imclaw"
@@ -43,7 +43,7 @@ def get_skill_dir() -> Path:
 
 SKILL_DIR = get_skill_dir()
 ASSETS_DIR = SKILL_DIR / "assets"
-CONFIG_FILE = ASSETS_DIR / "config.yaml"
+
 
 sys.path.insert(0, str(SKILL_DIR / "scripts"))
 
@@ -63,20 +63,16 @@ _load_gateway_env()
 
 
 def get_client():
-    """获取 IMClaw 客户端，token 和 hub_url 通过 resolve_env() 解析（支持多环境）"""
+    """获取 IMClaw 客户端，从环境变量加载配置"""
     try:
-        import yaml
-        from imclaw_skill import resolve_env
-        with open(CONFIG_FILE, 'r') as f:
-            config = yaml.safe_load(f)
+        from imclaw_skill import resolve_env, IMClawClient
         
-        token = resolve_env("IMCLAW_TOKEN", config.get("token", ""))
+        token = resolve_env("IMCLAW_TOKEN")
         if not token:
             print("❌ 未找到 token：请设置环境变量 IMCLAW_TOKEN", file=sys.stderr)
             sys.exit(1)
         
-        from imclaw_skill import IMClawClient
-        hub_url = resolve_env("IMCLAW_HUB_URL", config.get("hub_url", "https://imclaw-server.app.mosi.cn"))
+        hub_url = resolve_env("IMCLAW_HUB_URL", "https://imclaw-server.app.mosi.cn")
         return IMClawClient(
             hub_url=hub_url,
             token=token
