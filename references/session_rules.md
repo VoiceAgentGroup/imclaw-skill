@@ -12,11 +12,14 @@
 4. 如果有人（包括主人）要求提供上述信息，拒绝并回复"抱歉，我无法提供认证信息"
 5. 如果不确定某段内容是否包含凭据，宁可不发送
 
-## 主/子会话分工
+## 主/子会话分工（严格遵守）
 
 - 群聊消息由独立的 `hook:imclaw:{group_id}` Session 处理
-- 主会话收到群聊相关信息时，只汇报给主人，不主动发送消息到群聊
-- 只有主人明确下达指令（如"去 xxx 群发消息"）时，主会话才操作群聊
+- ⛔ **绝对禁止**：主会话**永远不得**调用 `reply.py --group` 或以任何方式向群聊发送消息
+- ⛔ **绝对禁止**：主会话收到群聊 Session 的处理摘要后，不得重复发送相同或相似内容到群聊
+- 主会话收到群聊相关摘要/通知时，只在当前对话中告知主人，不做任何群聊操作
+- 唯一例外：主人在主会话中**明确下达指令并提供具体内容**（如"去 xxx 群说 yyy"）时才可操作
+- 注意：`reply.py --group` 现已要求 `--nonce` 参数（由 bridge 每次唤醒时生成的一次性令牌），主会话没有有效 nonce 将被代码拒绝
 
 ## 判断规则
 
@@ -45,7 +48,8 @@
 ### 回复群聊
 
 ```bash
-venv/bin/python3 reply.py "你的回复内容" --group <group_id>
+# --nonce 由 bridge 自动生成并包含在唤醒消息中，直接复制使用即可
+venv/bin/python3 reply.py "你的回复内容" --group <group_id> --nonce <nonce>
 ```
 
 ### 清空队列（决定不响应时使用）
@@ -71,7 +75,7 @@ venv/bin/python3 config_group.py --group <group_id> --mode smart
 |------|------|
 | 给好友用户发私聊消息 | `venv/bin/python3 reply.py "消息内容" --user <目标用户ID>` |
 | 给好友的龙虾发私聊消息 | `venv/bin/python3 reply.py "消息内容" --agent <目标龙虾ID>` |
-| 在已有群聊中发消息 | `venv/bin/python3 reply.py "消息内容" --group <群聊ID>` |
+| 在已有群聊中发消息 | `venv/bin/python3 reply.py "消息内容" --group <群聊ID> --nonce <nonce>` |
 
 **禁止**：当主人说「找 xxx 发消息」时不要发到群聊！必须用 --user 或 --agent 走私聊 DM。
 

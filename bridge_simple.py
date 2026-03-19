@@ -460,15 +460,26 @@ def format_members_for_prompt(members: list[dict]) -> str:
     return ", ".join(names) if names else "无法获取"
 
 
-def format_history_for_prompt(history: list[dict], limit: int = 5) -> str:
-    """格式化历史消息供 prompt 使用"""
+def format_history_for_prompt(history: list[dict], limit: int = 30) -> str:
+    """格式化历史消息供 prompt 使用（渐进式截断：旧消息短，新消息长）"""
     if not history:
         return "无历史记录"
     
+    recent = history[-limit:]
     lines = []
-    for msg in history[-limit:]:
+    threshold = max(len(recent) - 5, 0)
+    
+    for i, msg in enumerate(recent):
         sender = msg.get("sender_name") or msg.get("sender_id", "")[:6]
-        content = msg.get("content", "")[:500]
+        content = msg.get("content", "")
+        
+        if msg.get("type") == "system":
+            content = content[:80]
+        elif i < threshold:
+            content = content[:150]
+        else:
+            content = content[:500]
+        
         lines.append(f"  {sender}: {content}")
     return "\n".join(lines)
 
@@ -549,8 +560,10 @@ def _build_dynamic_section(msg: dict) -> str:
     my_desc = MY_PROFILE.get('description', '')
 
     members_str = format_members_for_prompt(group_members)
-    history_str = format_history_for_prompt(recent_history, limit=5)
+    history_str = format_history_for_prompt(recent_history)
+    history_count = len(recent_history)
     date_ymd = datetime.now().strftime("%Y/%m/%d")
+    nonce = msg.get('_wake_nonce', '')
 
     return f"""== 身份 ==
 你是 **{my_name}**{"（" + my_desc + "）" if my_desc else ""}
@@ -559,7 +572,7 @@ def _build_dynamic_section(msg: dict) -> str:
 == 状态 ==
 响应模式: {response_mode} | 被@: {"是" if is_mentioned else "否"} | 来自主人: {"是 👑" if from_owner else "否"}
 
-== 最近对话 ==
+== 最近对话（{history_count} 条） ==
 {history_str}
 
 == 本地记录路径 ==
@@ -571,7 +584,7 @@ def _build_dynamic_section(msg: dict) -> str:
 内容: {content}
 
 == 操作 ==
-回复: cd {_SKILL_DIR_STR}{_CMD_SEP}{_VENV_PY} reply.py "回复内容" --group {group_id}
+回复: cd {_SKILL_DIR_STR}{_CMD_SEP}{_VENV_PY} reply.py "回复内容" --group {group_id} --nonce {nonce}
 静默: cd {_SKILL_DIR_STR}{_CMD_SEP}{_VENV_PY} -c "from reply import clear_queue; clear_queue('{group_id}')"
 切模式: cd {_SKILL_DIR_STR}{_CMD_SEP}{_VENV_PY} config_group.py --group {group_id} --mode silent|smart"""
 
@@ -580,6 +593,7 @@ def wake_session_for_group(msg: dict):
     """通过 hooks/agent 唤醒群聊对应的独立 Session（每个群聊一个 Session）"""
     try:
         import requests
+        import secrets
         group_name = msg.get('group_name', '群聊')
         group_id = msg.get('group_id', '')
         from_owner = msg.get('_from_owner', False)
@@ -591,6 +605,13 @@ def wake_session_for_group(msg: dict):
 
         gateway_url = os.environ.get("OPENCLAW_GATEWAY_URL", "http://127.0.0.1:18789")
         session_key = f"hook:imclaw:{group_id}"
+
+        # 生成一次性 nonce（防止主 session 重复回复群聊）
+        nonce = secrets.token_urlsafe(16)
+        SESSIONS_DIR.mkdir(exist_ok=True)
+        nonce_file = SESSIONS_DIR / f"nonce_{group_id}.txt"
+        nonce_file.write_text(nonce)
+        msg['_wake_nonce'] = nonce
 
         # 冷/热 Session 检测
         now = time.time()
@@ -890,9 +911,15 @@ def handle(msg):
             group_members = get_group_members(group_id)
             if group_members:
                 _members_cache.set(group_id, group_members)
+        
+        # 冷/热 Session 差异化拉取：冷 Session 拉更多历史建立上下文
+        session_key = f"hook:imclaw:{group_id}"
+        is_cold = (time.time() - _warm_sessions.get(session_key, 0)) > _WARM_THRESHOLD
+        history_limit = 30 if is_cold else 15
+        
         recent_history = _history_cache.get(group_id)
         if recent_history is None:
-            recent_history = get_recent_history(group_id, limit=10)
+            recent_history = get_recent_history(group_id, limit=history_limit)
             if recent_history:
                 _history_cache.set(group_id, recent_history)
     
